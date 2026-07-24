@@ -1,0 +1,70 @@
+name: APKを作る
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "01_NOUJIRU_PROJECT.zip"
+      - ".github/workflows/build-apk.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: noujiru-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: リポジトリを取得
+        uses: actions/checkout@v4
+
+      - name: プロジェクトZIPを展開
+        run: |
+          rm -rf build-source
+          mkdir -p build-source
+          unzip -q -o 01_NOUJIRU_PROJECT.zip -d build-source
+          test -f build-source/NoujiruPomodoro/settings.gradle.kts
+          test -f build-source/NoujiruPomodoro/app/build.gradle.kts
+          test -f build-source/NoujiruPomodoro/app/src/main/assets/index.html
+
+      - name: Java 17を準備
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Android SDKを準備
+        uses: android-actions/setup-android@v3
+
+      - name: Android 35をインストール
+        run: |
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Gradle 8.9を準備
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: APKをビルド
+        working-directory: build-source/NoujiruPomodoro
+        run: gradle --no-daemon --stacktrace :app:assembleDebug
+
+      - name: APKを取り出す
+        run: |
+          cp build-source/NoujiruPomodoro/app/build/outputs/apk/debug/app-debug.apk NoujiruPomodoro-v5.3.2.apk
+          test -s NoujiruPomodoro-v5.3.2.apk
+
+      - name: APKを保存
+        uses: actions/upload-artifact@v4
+        with:
+          name: NoujiruPomodoro-v5.3.2
+          path: NoujiruPomodoro-v5.3.2.apk
+          if-no-files-found: error
+          retention-days: 30
